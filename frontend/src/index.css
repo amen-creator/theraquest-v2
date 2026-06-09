@@ -1,0 +1,149 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #0a0e1a;
+  color: #f9fafb;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ==========================================================================
+   CUSTOM SCROLLBARS (PREMIUM FEEL)
+   ========================================================================== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.3);
+  border-radius: 10px;
+  transition: all 0.3s;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.6);
+}
+
+/* ==========================================================================
+   PRINT STYLES (PDF EXPORT)
+   ========================================================================== */
+@media print {
+  .hide-print, .app-sidebar, .amaterasu-orb, .input-area, .pipeline-status-indicator {
+    display: none !important;
+  }
+  .app-shell {
+    display: block;
+  }
+  .app-main {
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    background-color: white;
+    color: black;
+  }
+  .interaction-panel, .chat-box {
+    background: transparent !important;
+    border: none !important;
+  }
+  .chat-entry {
+    background: transparent !important;
+    border-bottom: 1px solid #ccc;
+    page-break-inside: avoid;
+  }
+  .user-msg, .therapist-msg {
+    color: black !important;
+  }
+}
+
+/* ==========================================================================
+   AMATERASU ORB (AGENT AVATAR)
+   ========================================================================== */
+.amaterasu-orb {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.5s ease;
+}
+
+.orb-core {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 20px var(--primary);
+  z-index: 10;
+  transition: all 0.3s ease;
+}
+
+.orb-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 191, 165, 0.3);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation: orbSpin 4s linear infinite;
+}
+
+.ring-1 { width: 40px; height: 40px; border-top-color: var(--primary); animation-duration: 3s; }
+.ring-2 { width: 50px; height: 50px; border-right-color: var(--accent); animation-duration: 5s; animation-direction: reverse; }
+.ring-3 { width: 60px; height: 60px; border-bottom-color: var(--secondary); animation-duration: 7s; }
+
+/* Orb States */
+.amaterasu-orb.listening .orb-core {
+  background: #ef4444;
+  box-shadow: 0 0 30px #ef4444;
+  transform: scale(1.2);
+}
+.amaterasu-orb.listening .orb-ring { border-color: rgba(239, 68, 68, 0.3); }
+
+.amaterasu-orb.thinking .orb-core {
+  background: var(--secondary);
+  box-shadow: 0 0 30px var(--secondary);
+  animation: orbPulse 1s infinite alternate;
+}
+
+.amaterasu-orb.speaking .orb-core {
+  background: #3b82f6;
+  box-shadow: 0 0 30px #3b82f6;
+  animation: orbSpeak 0.2s infinite alternate;
+}
+
+@keyframes orbSpin {
+  100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes orbPulse {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(1.3); opacity: 1; }
+}
+
+@keyframes orbSpeak {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.15); }
+}
+
+/* Mic Button */
+.mic-btn.listening {
+  animation: pulseRed 1.5s infinite;
+}
+
+@keyframes pulseRed {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
