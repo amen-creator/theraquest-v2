@@ -6,7 +6,7 @@ import asyncio
 from bs4 import BeautifulSoup
 import urllib.parse
 from groq import AsyncGroq
-from backend.schemas import NimbleSource
+from schemas import NimbleSource
 
 logger = logging.getLogger("amaterasu.nimble")
 

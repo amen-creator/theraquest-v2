@@ -4,10 +4,10 @@ import logging
 import asyncio
 from typing import AsyncGenerator
 from groq import AsyncGroq
-from backend.schemas import TherapistOutput, QuestOutput, InteractionResponse
-from backend.agents.nimble_agent import run_nimble_agent
-from backend.agents.vision_agent import run_vision_agent
-from backend.agents.memory_agent import run_memory_agent
+from schemas import TherapistOutput, QuestOutput, InteractionResponse
+from agents.nimble_agent import run_nimble_agent
+from agents.vision_agent import run_vision_agent
+from agents.memory_agent import run_memory_agent
 
 logger = logging.getLogger("amaterasu.pipeline")
 
@@ -77,7 +77,7 @@ Return ONLY JSON matching:
         raise ValueError(f"Safety violation: {s_res.get('reason')}")
 
     # ── 4. Persistence ───────────────────────────────────────────────────────
-    from backend.db import persist_session
+    from db import persist_session
     await persist_session(user_id, therapist, quest)
 
     return InteractionResponse(

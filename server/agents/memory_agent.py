@@ -1,7 +1,7 @@
 import os
 import logging
 from groq import AsyncGroq
-from backend.db import get_user_history
+from db import get_user_history
 
 logger = logging.getLogger("amaterasu.memory")
 

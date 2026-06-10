@@ -3,7 +3,7 @@ import logging
 import asyncio
 from dotenv import load_dotenv
 from supabase import create_client, Client
-from backend.schemas import TherapistOutput, QuestOutput
+from schemas import TherapistOutput, QuestOutput
 
 logger = logging.getLogger("amaterasu.db")
 

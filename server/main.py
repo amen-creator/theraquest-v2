@@ -14,9 +14,9 @@ from groq import AsyncGroq
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
-from backend.schemas import UserInteraction, InteractionResponse
-from backend.agents.pipeline import run_full_pipeline, stream_pipeline
-from backend.db import persist_session, get_user_history
+from schemas import UserInteraction, InteractionResponse
+from agents.pipeline import run_full_pipeline, stream_pipeline
+from db import persist_session, get_user_history
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("amaterasu")
