@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Brain, Star, Activity, MessageSquare, ClipboardList, Target, Compass, ShieldCheck, Medal, Database } from 'lucide-react';
-import { AnimatePresence } from 'framer-motion';
+import { Brain, Star, Activity, MessageSquare, ClipboardList, Target, Compass, ShieldCheck, Medal, Database, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useGlobalState } from '../context/GlobalState';
 import BadgePanel from './BadgePanel';
 import './Navbar.css';
@@ -19,6 +19,7 @@ const Navbar: React.FC = () => {
     { to: '/quizzes',    label: 'Quizzes',      icon: <ShieldCheck size={16}/> },
     { to: '/goals',      label: 'Goal Coach',   icon: <Target size={16}/> },
     { to: '/tower-insights', label: 'Tower Insights', icon: <Database size={16}/> },
+    { to: '/sanctuary',  label: 'Sanctuary',    icon: <Sparkles size={16}/> },
   ];
 
   return (
@@ -50,26 +51,59 @@ const Navbar: React.FC = () => {
 
         {/* Stats */}
         <div className="navbar-stats">
-          <div className="stat-item streak" title="Daily Streak">🔥 {streak}d</div>
+          <motion.div 
+            whileHover={{ scale: 1.05, y: -2 }}
+            className="stat-item streak" 
+            title="Daily Streak"
+            style={{ 
+              background: streak >= 3 ? 'linear-gradient(90deg, rgba(251,191,36,0.1), rgba(245,158,11,0.2))' : undefined,
+              borderColor: streak >= 3 ? '#fbbf24' : undefined,
+              color: streak >= 3 ? '#fbbf24' : undefined,
+              boxShadow: streak >= 3 ? '0 0 10px rgba(251,191,36,0.2)' : undefined
+            }}
+          >
+            <span className="streak-icon">
+              {streak >= 3 ? (
+                <motion.span 
+                  animate={{ scale: [1, 1.2, 1] }} 
+                  transition={{ repeat: Infinity, duration: 1 }}
+                  style={{ display: 'inline-block', filter: 'drop-shadow(0 0 5px rgba(251,191,36,0.8))' }}
+                >
+                  🔥
+                </motion.span>
+              ) : '🔥'}
+            </span> {streak}d
+          </motion.div>
 
-          <div className="xp-level-wrap" title={`${xp} XP total`}>
+          <motion.div 
+            whileHover={{ scale: 1.03, y: -2 }}
+            className="xp-level-wrap" 
+            title={`${xp} XP total`}
+          >
             <div className="xp-level-row">
               <span className="lvl-tag">LVL {level}</span>
               <span className="xp-count"><Star size={12} fill="#fbbf24" color="#fbbf24" /> {xp}</span>
             </div>
             <div className="xp-mini-bar">
-              <div className="xp-mini-fill" style={{ width: `${xpProgress}%` }} />
+              <motion.div 
+                className="xp-mini-fill" 
+                initial={{ width: 0 }}
+                animate={{ width: `${xpProgress}%` }}
+                transition={{ duration: 1.5, ease: "easeOut" }}
+              />
             </div>
-          </div>
+          </motion.div>
 
-          <button
+          <motion.button
+            whileHover={{ scale: 1.05, y: -2, boxShadow: '0 0 20px rgba(251,191,36,0.3)' }}
+            whileTap={{ scale: 0.95 }}
             className="badges-btn"
             onClick={() => setShowBadges(v => !v)}
             title="View Achievements"
           >
             <Medal size={16} />
             <span>{badges.length}</span>
-          </button>
+          </motion.button>
         </div>
       </header>
 

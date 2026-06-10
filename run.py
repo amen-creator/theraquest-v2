@@ -17,5 +17,5 @@ load_dotenv(os.path.join(project_root, ".env"))
 import uvicorn
 
 if __name__ == "__main__":
-    print("🚀 Starting TheraQuest V2 Amaterasu Pipeline on http://localhost:8000")
+    print("Starting TheraQuest V2 Amaterasu Pipeline on http://localhost:8000")
     uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True, app_dir=project_root)

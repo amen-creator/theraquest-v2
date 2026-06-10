@@ -1,0 +1,231 @@
+/* Planner Hub - Custom Styles */
+.planner-page {
+  padding: 3rem 4rem;
+  overflow-y: auto;
+  height: calc(100vh - 70px);
+  background: radial-gradient(circle at top left, rgba(16, 185, 129, 0.05), transparent 50%),
+              radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.05), transparent 50%);
+  position: relative;
+}
+
+/* Wizard Styles */
+.planner-wizard {
+  max-width: 800px;
+  margin: 0 auto;
+  background: rgba(20, 25, 40, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 24px;
+  padding: 3rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(20px);
+}
+
+.planner-wizard-header {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.planner-wizard-header h1 {
+  font-size: 2.5rem;
+  margin: 0;
+  background: linear-gradient(135deg, #10b981, #3b82f6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.planner-wizard-header p {
+  color: #88a0b0;
+  font-size: 1.1rem;
+  margin-top: 0.5rem;
+}
+
+.planner-step-title {
+  color: #fff;
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Selectable Chips */
+.chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.planner-chip {
+  padding: 0.8rem 1.5rem;
+  border-radius: 30px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #88a0b0;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.planner-chip:hover {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+}
+
+.planner-chip.selected {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #10b981;
+  color: #10b981;
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+}
+
+.planner-textarea {
+  width: 100%;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 1.5rem;
+  color: #fff;
+  font-size: 1.1rem;
+  resize: vertical;
+  min-height: 120px;
+  outline: none;
+  transition: border-color 0.3s;
+}
+
+.planner-textarea:focus {
+  border-color: #10b981;
+  background: rgba(0,0,0,0.5);
+}
+
+.planner-controls {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3rem;
+}
+
+/* Roadmap / Timeline Styles */
+.roadmap-container {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.roadmap-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 3rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.roadmap-header h2 {
+  font-size: 2.2rem;
+  color: #fff;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.timeline {
+  position: relative;
+  padding-left: 3rem;
+}
+
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(to bottom, #10b981, #3b82f6);
+  border-radius: 4px;
+  opacity: 0.5;
+}
+
+.timeline-node {
+  position: relative;
+  margin-bottom: 3rem;
+}
+
+.timeline-dot {
+  position: absolute;
+  left: -3rem;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  background: #05050f;
+  border: 4px solid #10b981;
+  border-radius: 50%;
+  transform: translateX(-40%);
+  z-index: 2;
+  box-shadow: 0 0 10px #10b981;
+}
+
+.timeline-card {
+  background: rgba(20, 25, 40, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 2rem;
+  backdrop-filter: blur(10px);
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.timeline-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 30px rgba(0,0,0,0.4);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.timeline-card h3 {
+  margin: 0 0 1rem 0;
+  color: #10b981;
+  font-size: 1.4rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.timeline-content {
+  color: #d1d5db;
+  line-height: 1.8;
+  font-size: 1.05rem;
+}
+
+.timeline-content ul {
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.timeline-content li {
+  margin-bottom: 0.5rem;
+}
+
+/* Loading state */
+.scanning-line {
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, #10b981, transparent);
+  animation: scan 2s linear infinite;
+  border-radius: 2px;
+}
+
+@keyframes scan {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
+  gap: 2rem;
+}

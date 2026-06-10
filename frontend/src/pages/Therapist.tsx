@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { PlayCircle, Star, MessageSquare, Brain, Trophy, X, Mic, MicOff, Volume2, Camera, CameraOff, Globe, Database, Eye, Cpu } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { PlayCircle, Star, MessageSquare, Brain, Trophy, X, Mic, MicOff, Volume2, Camera, Globe, Database, Eye, Send } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useGlobalState } from '../context/GlobalState';
 import { useAudio } from '../hooks/useAudio';
@@ -23,13 +24,35 @@ const Therapist: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [pipelineStatus, setPipelineStatus] = useState('');
   const [activeAgents, setActiveAgents] = useState<string[]>([]);
-  const [chatLog, setChatLog] = useState<ChatEntry[]>([]);
+  const [chatLog, setChatLog] = useState<ChatEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem('theraquest_chat');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [pastSessions, setPastSessions] = useState<ChatEntry[][]>(() => {
+    try {
+      const saved = localStorage.getItem('theraquest_sessions');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [interimText, setInterimText] = useState('');
+  const [micError, setMicError] = useState<string | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [orbState, setOrbState] = useState<'idle' | 'listening' | 'thinking' | 'speaking'>('idle');
   const [biometricLabel, setBiometricLabel] = useState<string | null>(null);
-  
+  const [expandedQuest, setExpandedQuest] = useState<number | null>(null);
+  const [triggerSend, setTriggerSend] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const shouldListenRef = useRef(false);
+  const silenceTimeoutRef = useRef<any>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -43,7 +66,20 @@ const Therapist: React.FC = () => {
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    localStorage.setItem('theraquest_chat', JSON.stringify(chatLog));
   }, [chatLog]);
+
+  useEffect(() => {
+    localStorage.setItem('theraquest_sessions', JSON.stringify(pastSessions));
+  }, [pastSessions]);
+
+  // Preload premium voices (browsers load them async)
+  useEffect(() => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+    }
+  }, []);
 
   // Camera
   const startCamera = async () => {
@@ -70,47 +106,189 @@ const Therapist: React.FC = () => {
     return canvasRef.current.toDataURL('image/jpeg', 0.6);
   };
 
-  // Speech Recognition
-  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-  const recognition = SpeechRecognition ? new SpeechRecognition() : null;
-  if (recognition) {
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-    recognition.onstart = () => { setIsListening(true); setOrbState('listening'); };
-    recognition.onresult = (event: any) => {
-      const t = Array.from(event.results).map((r: any) => r[0].transcript).join('');
-      setInput(t);
+  // ── Robust Speech Recognition ──────────────────────────────────────────────
+  const stopListening = useCallback(() => {
+    if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
+    shouldListenRef.current = false;
+    try { recognitionRef.current?.stop(); } catch {}
+    setIsListening(false);
+    setInterimText('');
+    setOrbState('idle');
+  }, []);
+
+  const startListening = useCallback(async () => {
+    setMicError(null);
+
+    // 1. Check browser support
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      setMicError('Speech recognition is not supported in this browser. Please use Chrome.');
+      return;
+    }
+
+    // 2. Explicitly request microphone permission first
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setMicError('Microphone access denied. Please allow mic access in your browser settings.');
+      return;
+    }
+
+    // 3. Stop any existing instance
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch {}
+    }
+
+    // 4. Create fresh recognizer
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = 'en-US';
+    rec.maxAlternatives = 1;
+
+    rec.onstart = () => {
+      setIsListening(true);
+      setOrbState('listening');
+      setMicError(null);
+      if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = setTimeout(() => {
+        stopListening();
+      }, 30000);
     };
-    recognition.onerror = () => { setIsListening(false); setOrbState('idle'); };
-    recognition.onend = () => { setIsListening(false); };
-  }
+
+    rec.onresult = (event: any) => {
+      if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = setTimeout(() => {
+        stopListening();
+      }, 30000);
+
+      let finalText = '';
+      let interimText = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const t = event.results[i][0].transcript;
+        if (event.results[i].isFinal) finalText += t + ' ';
+        else interimText += t;
+      }
+
+      const combinedLower = (finalText + ' ' + interimText).toLowerCase();
+      if (combinedLower.match(/\bsend\b\s*$/i)) {
+        const cleanFinal = finalText.replace(/(?:\b|^)send\b\s*$/i, '').trim();
+        const cleanInterim = interimText.replace(/(?:\b|^)send\b\s*$/i, '').trim();
+        if (cleanFinal) setInput(prev => (prev + ' ' + cleanFinal).trim());
+        setInterimText(cleanInterim);
+        
+        stopListening();
+        setTriggerSend(true);
+        return;
+      }
+
+      if (finalText.trim()) setInput(prev => (prev + ' ' + finalText).trim());
+      setInterimText(interimText);
+    };
+
+    rec.onerror = (e: any) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        setMicError('Mic blocked. In Brave: Settings → Privacy → Allow microphone. In Chrome: click 🔒 in address bar.');
+        stopListening();
+      }
+      // 'no-speech' and 'aborted' are non-fatal — ignore them
+    };
+
+    rec.onend = () => {
+      // Auto-restart to keep mic alive as long as user wants it
+      if (shouldListenRef.current) {
+        try { rec.start(); } catch {}
+      } else {
+        setIsListening(false);
+        setOrbState('idle');
+        setInterimText('');
+      }
+    };
+
+    recognitionRef.current = rec;
+    shouldListenRef.current = true;
+    try { rec.start(); } catch (e) {
+      setMicError('Could not start microphone. Try clicking the Speak button again.');
+    }
+  }, [stopListening]);
 
   const toggleListen = () => {
-    if (isListening) { recognition?.stop(); }
-    else { setInput(''); recognition?.start(); }
+    if (isListening) stopListening();
+    else startListening();
   };
 
+  const stopSpeaking = useCallback(() => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      setOrbState('idle');
+    }
+  }, []);
+
+  // ── Premium Chunked TTS System ───────────────────────────────────────────
   const speak = useCallback((text: string) => {
     if (!voiceEnabled || !('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'en-US'; u.pitch = 1; u.rate = 0.95;
-    u.onstart = () => setOrbState('speaking');
-    u.onend = () => setOrbState('idle');
-    window.speechSynthesis.speak(u);
+    
+    // 1. Voice Selection: Find premium voices
+    let voices = window.speechSynthesis.getVoices();
+    let bestVoice = voices.find(v => v.name.includes('Google US English') || v.name.includes('Samantha') || v.name.includes('Microsoft Zira') || v.name.includes('Microsoft Aria')) || voices.find(v => v.lang.startsWith('en-'));
+    
+    // 2. Advanced Chunking: Prevent 15-second Chrome TTS bug by splitting into sentences
+    const chunks = text.match(/[^.!?\n]+[.!?\n]+/g) || [text];
+    let chunkIndex = 0;
+    
+    const speakNextChunk = () => {
+      if (chunkIndex >= chunks.length) {
+        setOrbState('idle');
+        return;
+      }
+      
+      const chunkText = chunks[chunkIndex].trim();
+      if (!chunkText) {
+        chunkIndex++;
+        speakNextChunk();
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(chunkText);
+      if (bestVoice) utterance.voice = bestVoice;
+      utterance.lang = 'en-US';
+      utterance.pitch = 0.95; // Slightly deeper for a calming therapist voice
+      utterance.rate = 0.92;  // Deliberate, measured pacing
+      
+      utterance.onstart = () => setOrbState('speaking');
+      utterance.onend = () => {
+        chunkIndex++;
+        speakNextChunk();
+      };
+      utterance.onerror = (e) => {
+        console.warn('TTS Error:', e);
+        chunkIndex++;
+        speakNextChunk(); // Skip failed chunk and continue
+      };
+      
+      window.speechSynthesis.speak(utterance);
+    };
+    
+    speakNextChunk();
   }, [voiceEnabled]);
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  const handleSend = useCallback(async () => {
+    if (!input.trim() && !interimText.trim()) return;
+    const finalInput = (input + ' ' + interimText).trim();
+    if (!finalInput) return;
+    setInput(finalInput);
+    setInterimText('');
     playSound('click');
-    if (isListening) recognition?.stop();
+    if (isListening) {
+      stopListening();
+    }
     setLoading(true);
     setOrbState('thinking');
     setActiveAgents([]);
     setBiometricLabel(null);
     setPipelineStatus('Initializing Amaterasu 6-Agent Pipeline...');
-    const msg = input;
+    const msg = finalInput;
     setInput('');
     const imageData = captureFrame();
 
@@ -188,7 +366,14 @@ const Therapist: React.FC = () => {
     }
     setLoading(false);
     if (orbState === 'thinking') setOrbState('idle');
-  };
+  }, [input, interimText, isListening, stopListening, playSound, speak, orbState]);
+
+  useEffect(() => {
+    if (triggerSend) {
+      setTriggerSend(false);
+      handleSend();
+    }
+  }, [triggerSend, handleSend]);
 
   const playQuest = (quest: Quest) => { setActiveQuest(quest); setCurrentStep(0); };
 
@@ -251,12 +436,47 @@ const Therapist: React.FC = () => {
 
         {/* Voice & PDF Toggle */}
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={() => setVoiceEnabled(!voiceEnabled)} className="hide-print" style={{ background: 'transparent', border: 'none', color: voiceEnabled ? '#10b981' : '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8rem' }}>
+          {orbState === 'speaking' && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              onClick={stopSpeaking}
+              className="hide-print"
+              style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid #ef4444', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8rem', padding: '4px 10px', borderRadius: '8px' }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', animation: 'pulse 1s infinite' }} />
+              Stop Audio
+            </motion.button>
+          )}
+          <button onClick={() => { setVoiceEnabled(!voiceEnabled); if(voiceEnabled) stopSpeaking(); }} className="hide-print" style={{ background: 'transparent', border: 'none', color: voiceEnabled ? '#10b981' : '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8rem' }}>
             <Volume2 size={16} /> {voiceEnabled ? 'Voice On' : 'Voice Off'}
           </button>
           <button onClick={() => window.print()} className="hide-print" style={{ background: 'transparent', border: 'none', color: '#8b5cf6', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8rem' }}>
             Export PDF
           </button>
+          <button onClick={() => setShowHistoryModal(true)} className="hide-print" style={{ background: 'transparent', border: 'none', color: '#fbbf24', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8rem' }}>
+            📜 History
+          </button>
+          {chatLog.length > 0 && (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => {
+                setPastSessions(prev => [chatLog, ...prev]);
+                setChatLog([]);
+                stopSpeaking();
+                setActiveAgents([]);
+                setPipelineStatus('');
+                setBiometricLabel(null);
+                playSound('success');
+                confetti({ particleCount: 50, spread: 60, origin: { y: 0.3 }, colors: ['#8b5cf6', '#10b981'] });
+              }}
+              className="hide-print"
+              style={{ background: 'linear-gradient(45deg, rgba(139,92,246,0.15), rgba(16,185,129,0.15))', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', padding: '6px 14px', borderRadius: '20px', fontWeight: 500, boxShadow: '0 0 10px rgba(139,92,246,0.1)' }}
+            >
+              ✨ New Session
+            </motion.button>
+          )}
         </div>
       </div>
 
@@ -299,17 +519,58 @@ const Therapist: React.FC = () => {
                   </div>
                 )}
 
-                {/* Quest Card */}
-                <div className="quest-card">
+                {/* Quest Card — Elegant Expand/Collapse */}
+                <motion.div
+                  className="quest-card"
+                  initial={{ opacity: 0, y: 12, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ duration: 0.45, ease: [0.34, 1.56, 0.64, 1] }}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setExpandedQuest(expandedQuest === i ? null : i)}
+                >
                   <div className="quest-header">
                     <h3><Trophy size={18} /> Quest Unlocked: {log.quest.quest_title}</h3>
-                    <span className="total-xp">+{log.quest.total_xp} XP</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span className="total-xp">+{log.quest.total_xp} XP</span>
+                      <motion.span
+                        animate={{ rotate: expandedQuest === i ? 180 : 0 }}
+                        transition={{ duration: 0.3 }}
+                        style={{ color: '#8b5cf6', fontSize: '1.2rem', lineHeight: 1 }}
+                      >▾</motion.span>
+                    </div>
                   </div>
-                  <p>{log.quest.quest_lore}</p>
-                  <button className="complete-btn pulse" onClick={() => playQuest(log.quest)}>
-                    <PlayCircle size={18} /> Begin Quest
-                  </button>
-                </div>
+
+                  <AnimatePresence initial={false}>
+                    {expandedQuest === i && (
+                      <motion.div
+                        key="quest-body"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+                        style={{ overflow: 'hidden' }}
+                      >
+                        <p style={{ marginTop: 12 }}>{log.quest.quest_lore}</p>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                          {log.quest.steps.map((s, si) => (
+                            <span key={si} style={{ fontSize: '0.75rem', background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.2)', color: '#a78bfa', padding: '3px 10px', borderRadius: 20 }}>
+                              Step {si+1}: +{s.xp_reward} XP
+                            </span>
+                          ))}
+                        </div>
+                        <motion.button
+                          className="complete-btn"
+                          style={{ marginTop: 16, width: '100%' }}
+                          whileHover={{ scale: 1.03, boxShadow: '0 0 24px rgba(139,92,246,0.4)' }}
+                          whileTap={{ scale: 0.97 }}
+                          onClick={e => { e.stopPropagation(); playQuest(log.quest); }}
+                        >
+                          <PlayCircle size={18} /> Begin Quest
+                        </motion.button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
               </div>
             ))
           )}
@@ -324,21 +585,80 @@ const Therapist: React.FC = () => {
         </div>
 
         {/* Input Area */}
-        <div className="input-area hide-print" style={{ display: 'flex', gap: 10, padding: '12px' }}>
-          {recognition && (
-            <button onClick={toggleListen} className={`mic-btn ${isListening ? 'listening' : ''}`} title="Click to speak" style={{ background: isListening ? '#ef4444' : 'rgba(255,255,255,0.05)', border: `1px solid ${isListening ? '#ef4444' : 'rgba(255,255,255,0.1)'}`, padding: '0 14px', borderRadius: 8, color: '#fff', cursor: 'pointer', transition: 'all 0.3s', display: 'flex', alignItems: 'center' }}>
-              {isListening ? <MicOff size={20} /> : <Mic size={20} />}
-            </button>
-          )}
-          <input 
-            id="chat-input"
-            name="chat-input"
-            autoComplete="off"
-            type="text" 
-            value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && !loading && handleSend()} placeholder={isListening ? '🎙️ Listening... speak now' : 'How are you feeling today?'} disabled={loading} autoFocus style={{ flex: 1 }} />
-          <button onClick={handleSend} disabled={loading || !input.trim()}>
-            {loading ? '⏳' : 'Send →'}
-          </button>
+        <div className="input-area hide-print" style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: '10px 12px' }}>
+          {/* Interim transcript preview */}
+          <AnimatePresence>
+            {interimText && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                style={{ fontSize: '0.82rem', color: '#8b5cf6', padding: '4px 8px 6px', fontStyle: 'italic' }}
+              >
+                🎙️ {interimText}...
+              </motion.div>
+            )}
+          </AnimatePresence>
+          {/* Mic Error */}
+          <AnimatePresence>
+            {micError && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                style={{ fontSize: '0.8rem', color: '#ef4444', padding: '4px 8px 6px', background: 'rgba(239,68,68,0.08)', borderRadius: 6, marginBottom: 4 }}
+              >
+                ⚠️ {micError}
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <motion.button
+              onClick={toggleListen}
+              className={`mic-btn ${isListening ? 'listening' : ''}`}
+              title={isListening ? 'Click to stop' : 'Click to speak (continuous)'}
+              whileTap={{ scale: 0.92 }}
+              style={{
+                background: isListening ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${isListening ? '#ef4444' : 'rgba(255,255,255,0.15)'}`,
+                padding: '0 14px', borderRadius: 8, color: isListening ? '#ef4444' : '#9ca3af',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                fontSize: '0.8rem', whiteSpace: 'nowrap', minWidth: 90,
+                boxShadow: isListening ? '0 0 12px rgba(239,68,68,0.3)' : 'none',
+                transition: 'all 0.3s'
+              }}
+            >
+              {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+              {isListening ? (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  Stop
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', animation: 'pulse 1s infinite' }} />
+                </span>
+              ) : 'Speak'}
+            </motion.button>
+            <input
+              id="chat-input"
+              name="chat-input"
+              autoComplete="off"
+              type="text"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !loading && handleSend()}
+              placeholder={isListening ? 'Listening... keep talking or type' : 'How are you feeling today?'}
+              disabled={loading}
+              autoFocus
+              style={{ flex: 1 }}
+            />
+            <motion.button
+              onClick={handleSend}
+              disabled={loading || (!input.trim() && !interimText.trim())}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              {loading ? '⏳' : <><Send size={15} /> Send</>}
+            </motion.button>
+          </div>
         </div>
       </div>
 
@@ -362,6 +682,43 @@ const Therapist: React.FC = () => {
               <button className="action-btn" onClick={completeStep}>
                 {currentStep === activeQuest.steps.length - 1 ? 'Finish Quest & Claim XP' : 'Complete Step →'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* History Modal */}
+      {showHistoryModal && (
+        <div className="modal-overlay">
+          <div className="quest-modal" style={{ maxWidth: 600 }}>
+            <button className="close-btn" onClick={() => setShowHistoryModal(false)}><X size={24} /></button>
+            <div className="modal-header">
+              <h2>📜 Past Sessions</h2>
+              <p>Your previous therapy journeys and conversations.</p>
+            </div>
+            <div className="modal-body" style={{ maxHeight: 400, overflowY: 'auto' }}>
+              {pastSessions.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#aaa' }}>No past sessions found. Start a New Session to archive one!</div>
+              ) : (
+                pastSessions.map((session, idx) => (
+                  <div key={idx} className="step-card" style={{ marginBottom: 12, padding: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ color: '#fff' }}>Session {pastSessions.length - idx}</strong>
+                      <span style={{ fontSize: '0.8rem', background: 'rgba(139,92,246,0.2)', color: '#a78bfa', padding: '2px 8px', borderRadius: 12 }}>{session.length} exchanges</span>
+                    </div>
+                    <p style={{ fontSize: '0.9rem', color: '#ccc', margin: '10px 0', fontStyle: 'italic' }}>
+                      "{session[0]?.user.substring(0, 80)}{session[0]?.user.length > 80 ? '...' : ''}"
+                    </p>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                      <button onClick={() => { setChatLog(session); setShowHistoryModal(false); }} style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 4 }}><PlayCircle size={14} /> Restore Session</button>
+                      <button onClick={() => { if(window.confirm('Delete this session permanently?')) setPastSessions(p => p.filter((_, i) => i !== idx)); }} style={{ background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem' }}>Delete</button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <button className="action-btn" onClick={() => { if(window.confirm('Are you sure you want to delete all past sessions?')) setPastSessions([]); }} style={{ background: 'transparent', border: '1px solid #ef4444', color: '#ef4444' }}>Clear All History</button>
             </div>
           </div>
         </div>

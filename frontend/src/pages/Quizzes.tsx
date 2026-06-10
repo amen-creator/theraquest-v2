@@ -1,27 +1,45 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { Star, CheckCircle, XCircle, RefreshCw, ArrowRight, Trophy, Zap, Brain } from 'lucide-react';
 import { useGlobalState } from '../context/GlobalState';
-
-const TOPICS = ['CBT Fundamentals', 'Anxiety & Coping', 'Depression & Behavioral Activation', 'Mindfulness', 'Self-Compassion', 'Stress Management'];
+import { useAudio } from '../hooks/useAudio';
+import './Quizzes.css';
 
 interface Question { question: string; options: string[]; answer: string; explanation: string; }
 
+const TOPICS = [
+  { id: 'CBT Fundamentals', label: 'CBT Fundamentals', icon: '🧠' },
+  { id: 'Anxiety & Coping', label: 'Anxiety & Coping', icon: '🌊' },
+  { id: 'Depression & Behavioral Activation', label: 'Depression & BA', icon: '🌅' },
+  { id: 'Mindfulness', label: 'Mindfulness', icon: '🧘' },
+  { id: 'Self-Compassion', label: 'Self-Compassion', icon: '💗' },
+  { id: 'Stress Management', label: 'Stress Management', icon: '⚡' },
+];
+
+const LETTERS = ['A', 'B', 'C', 'D'];
+
 const Quizzes: React.FC = () => {
   const { addXP } = useGlobalState();
-  const [topic, setTopic] = useState(TOPICS[0]);
+  const playSound = useAudio();
+
+  const [topic, setTopic] = useState(TOPICS[0].id);
   const [numQ, setNumQ] = useState(5);
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [revealedIdx, setRevealedIdx] = useState<number | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [score, setScore] = useState(0);
 
   const generateQuiz = async () => {
+    playSound('click');
     setLoading(true);
     setSubmitted(false);
     setAnswers({});
     setQuestions([]);
+    setCurrentIdx(0);
+    setRevealedIdx(null);
     try {
       const res = await fetch('http://localhost:8000/api/quiz', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -35,104 +53,292 @@ const Quizzes: React.FC = () => {
     setLoading(false);
   };
 
-  const submit = () => {
+  const handleAnswer = (opt: string) => {
+    if (revealedIdx === currentIdx) return; // already answered
+    playSound('click');
+    setAnswers(prev => ({ ...prev, [currentIdx]: opt }));
+    setRevealedIdx(currentIdx);
+
+    const isCorrect = opt[0] === questions[currentIdx].answer;
+    if (isCorrect) playSound('success');
+  };
+
+  const goNext = () => {
+    if (currentIdx < questions.length - 1) {
+      setCurrentIdx(i => i + 1);
+      setRevealedIdx(null);
+      playSound('click');
+    } else {
+      finishQuiz();
+    }
+  };
+
+  const finishQuiz = () => {
     const sc = questions.reduce((acc, q, i) => acc + ((answers[i] || '')[0] === q.answer ? 1 : 0), 0);
     setScore(sc);
     setSubmitted(true);
-    addXP(15 + sc * 5, `Quiz: ${sc}/${questions.length} on ${topic}`);
+    addXP(20 + sc * 8, `Quiz: ${sc}/${questions.length} on ${topic}`);
+    playSound('success');
   };
 
+  const reset = () => {
+    setQuestions([]);
+    setAnswers({});
+    setSubmitted(false);
+    setCurrentIdx(0);
+    setRevealedIdx(null);
+  };
+
+  const currentQ = questions[currentIdx];
+  const answered = revealedIdx === currentIdx;
   const pct = questions.length > 0 ? (score / questions.length) * 100 : 0;
+  const xpEarned = 20 + score * 8;
+
+  const getScoreColor = () => pct >= 80 ? '#10b981' : pct >= 50 ? '#fbbf24' : '#ef4444';
+  const getScoreLabel = () => pct >= 80 ? '🌟 Exceptional Mastery!' : pct >= 60 ? '💪 Great Progress!' : pct >= 40 ? '📚 Keep Practising!' : '🔄 Try Again!';
 
   return (
-    <motion.div style={{ padding: '2rem', overflowY: 'auto', height: 'calc(100vh - 70px)' }} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <div style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: 900, margin: 0, background: 'linear-gradient(135deg, #fff, #fbbf24)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Wellness Knowledge Quizzes</h1>
-        <p style={{ color: 'var(--text-muted)', margin: '0.5rem 0 0' }}>Test your CBT knowledge and earn XP — new questions every time!</p>
+    <div className="quizzes-page">
+
+      {/* ── SIDEBAR ── */}
+      <div className="quiz-sidebar">
+        <div className="quiz-sidebar-header">
+          <h2>Knowledge Arena</h2>
+          <p>Test your CBT expertise and earn XP</p>
+        </div>
+
+        <div className="quiz-topic-list">
+          {TOPICS.map(t => (
+            <button
+              key={t.id}
+              className={`quiz-topic-btn ${topic === t.id ? 'active' : ''}`}
+              onClick={() => { setTopic(t.id); playSound('click'); }}
+              disabled={questions.length > 0 && !submitted}
+            >
+              <span className="quiz-topic-icon">{t.icon}</span>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="quiz-num-selector">
+          <label>
+            <span>Questions</span>
+            <span>{numQ}</span>
+          </label>
+          <input
+            type="range" min={3} max={10} value={numQ}
+            onChange={e => setNumQ(+e.target.value)}
+            disabled={questions.length > 0 && !submitted}
+            style={{ width: '100%', accentColor: '#fbbf24' }}
+          />
+        </div>
+
+        {/* XP preview */}
+        <div style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 14, padding: '1rem', fontSize: '0.85rem', color: '#88a0b0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#fbbf24', fontWeight: 700, marginBottom: 6 }}>
+            <Zap size={14} /> XP Reward
+          </div>
+          Base: 20 XP + 8 XP per correct answer<br />
+          <span style={{ color: '#fbbf24' }}>Max: {20 + numQ * 8} XP</span>
+        </div>
       </div>
 
-      {/* Settings */}
-      {!questions.length && (
-        <div style={{ background: 'var(--panel-bg)', border: '1px solid var(--border)', borderRadius: '16px', padding: '2rem' }}>
-          <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>📖 Choose Topic</label>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {TOPICS.map(t => (
-                <button key={t} onClick={() => setTopic(t)} style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid', borderColor: topic === t ? '#fbbf24' : 'var(--border)', background: topic === t ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.03)', color: topic === t ? '#fbbf24' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', transition: 'all 0.2s' }}>
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div style={{ marginBottom: '2rem' }}>
-            <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>❓ Number of Questions: {numQ}</label>
-            <input type="range" min={3} max={8} value={numQ} onChange={e => setNumQ(+e.target.value)} style={{ width: '100%', accentColor: '#fbbf24' }} />
-          </div>
-          <button onClick={generateQuiz} disabled={loading} style={{ background: 'linear-gradient(135deg, #fbbf24, #d97706)', color: 'black', border: 'none', padding: '1rem 2.5rem', borderRadius: '12px', fontSize: '1rem', fontWeight: 800, cursor: 'pointer', opacity: loading ? 0.5 : 1 }}>
-            {loading ? '🎲 Generating Quiz...' : `🎲 Generate ${numQ}-Question Quiz`}
-          </button>
-        </div>
-      )}
+      {/* ── MAIN CONTENT ── */}
+      <div className="quiz-main">
+        <AnimatePresence mode="wait">
 
-      {/* Questions */}
-      {questions.length > 0 && !submitted && (
-        <AnimatePresence>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            {questions.map((q, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} style={{ background: 'var(--panel-bg)', border: '1px solid var(--border)', borderRadius: '14px', padding: '1.5rem' }}>
-                <p style={{ fontWeight: 700, fontSize: '1rem', margin: '0 0 1rem' }}>Q{i + 1}. {q.question}</p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                  {q.options.map(opt => (
-                    <button key={opt} onClick={() => setAnswers(prev => ({ ...prev, [i]: opt }))} style={{ textAlign: 'left', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid', borderColor: answers[i] === opt ? 'var(--accent)' : 'var(--border)', background: answers[i] === opt ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.03)', color: answers[i] === opt ? 'white' : 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.15s', fontWeight: answers[i] === opt ? 700 : 400 }}>
-                      {opt}
-                    </button>
+          {/* LOBBY */}
+          {!loading && !questions.length && !submitted && (
+            <motion.div key="lobby" className="quiz-lobby" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <motion.div className="quiz-lobby-badge" animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 2.5, repeat: Infinity }}>
+                {TOPICS.find(t => t.id === topic)?.icon}
+              </motion.div>
+              <h1>{TOPICS.find(t => t.id === topic)?.label}</h1>
+              <p>You're about to take a {numQ}-question quiz on this topic. Each correct answer earns you +8 XP. Are you ready?</p>
+
+              <div style={{ display: 'flex', gap: '2rem', textAlign: 'center' }}>
+                {[{ label: 'Questions', val: numQ, color: '#3b82f6' }, { label: 'Max XP', val: `${20 + numQ * 8}`, color: '#fbbf24' }, { label: 'Topic', val: '1', color: '#10b981' }].map(s => (
+                  <div key={s.label} style={{ background: 'rgba(255,255,255,0.04)', padding: '1rem 1.5rem', borderRadius: 14, border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 900, color: s.color }}>{s.val}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#88a0b0', marginTop: 4 }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              <button className="quiz-start-btn" onClick={generateQuiz}>
+                ⚡ Start Challenge
+              </button>
+            </motion.div>
+          )}
+
+          {/* LOADING */}
+          {loading && (
+            <motion.div key="loading" className="quiz-loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <div className="quiz-loader-orb" />
+              <h2 style={{ color: '#fff', margin: 0 }}>Building Your Quiz...</h2>
+              <p style={{ color: '#88a0b0' }}>Our AI is crafting unique questions for you</p>
+            </motion.div>
+          )}
+
+          {/* ONE QUESTION AT A TIME */}
+          {questions.length > 0 && !submitted && (
+            <motion.div key="quiz" className="quiz-question-wrapper" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+
+              {/* Progress bar */}
+              <div className="quiz-progress-bar">
+                <div className="quiz-progress-fill" style={{ width: `${((currentIdx + (answered ? 1 : 0)) / questions.length) * 100}%` }} />
+              </div>
+
+              {/* Question counter */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', maxWidth: 700 }}>
+                <span style={{ color: '#88a0b0', fontSize: '0.9rem' }}>{currentIdx + 1} / {questions.length}</span>
+                <span style={{ color: '#fbbf24', fontWeight: 700, fontSize: '0.9rem' }}>
+                  {Object.values(answers).filter((a, i) => a[0] === questions[i]?.answer).length} correct so far
+                </span>
+              </div>
+
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={currentIdx}
+                  initial={{ opacity: 0, x: 40 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -40 }}
+                  transition={{ duration: 0.3 }}
+                  className="quiz-question-card"
+                >
+                  <div className="quiz-q-number">Question {currentIdx + 1}</div>
+                  <div className="quiz-q-text">{currentQ.question}</div>
+
+                  <div className="quiz-options">
+                    {currentQ.options.map((opt, oi) => {
+                      let cls = '';
+                      if (answered) {
+                        if (opt[0] === currentQ.answer) cls = 'correct';
+                        else if (answers[currentIdx] === opt) cls = 'wrong';
+                      } else if (answers[currentIdx] === opt) {
+                        cls = 'selected';
+                      }
+                      return (
+                        <motion.button
+                          key={opt}
+                          className={`quiz-option ${cls}`}
+                          onClick={() => handleAnswer(opt)}
+                          disabled={answered}
+                          whileHover={!answered ? { x: 5 } : {}}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: oi * 0.08 }}
+                        >
+                          <span className="quiz-option-letter">{LETTERS[oi]}</span>
+                          {opt.length > 2 ? opt.slice(3) : opt}
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Explanation revealed after answering */}
+                  <AnimatePresence>
+                    {answered && (
+                      <motion.div
+                        className="quiz-explanation"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        transition={{ duration: 0.4 }}
+                      >
+                        💡 {currentQ.explanation}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Nav buttons */}
+                  {answered && (
+                    <motion.div className="quiz-nav" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                      <button
+                        className="btn-wizard btn-primary"
+                        onClick={goNext}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                      >
+                        {currentIdx < questions.length - 1
+                          ? <><ArrowRight size={18} /> Next Question</>
+                          : <><Trophy size={18} /> See Results</>
+                        }
+                      </button>
+                    </motion.div>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </motion.div>
+          )}
+
+          {/* RESULTS */}
+          {submitted && (
+            <motion.div key="results" className="quiz-results" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
+
+              {/* Score Hero Card */}
+              <motion.div
+                className="quiz-score-card"
+                style={{ background: `radial-gradient(circle at center, ${getScoreColor()}22, rgba(20,25,40,0.9))`, border: `2px solid ${getScoreColor()}` }}
+                initial={{ scale: 0.8 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 200 }}
+              >
+                <div className="quiz-score-big" style={{ color: getScoreColor() }}>{score}<span style={{ fontSize: '3rem', opacity: 0.6 }}>/{questions.length}</span></div>
+                <div className="quiz-score-label" style={{ color: '#fff' }}>{getScoreLabel()}</div>
+                <div style={{ color: '#fbbf24', fontSize: '1.2rem', fontWeight: 700 }}>
+                  <Zap size={18} style={{ display: 'inline' }} /> +{xpEarned} XP Earned!
+                </div>
+
+                {/* Circular percentage */}
+                <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'center', gap: '2rem' }}>
+                  {[{ label: 'Correct', val: score, color: '#10b981' }, { label: 'Wrong', val: questions.length - score, color: '#ef4444' }, { label: 'Accuracy', val: `${Math.round(pct)}%`, color: getScoreColor() }].map(s => (
+                    <div key={s.label} style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '2rem', fontWeight: 900, color: s.color }}>{s.val}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#88a0b0' }}>{s.label}</div>
+                    </div>
                   ))}
                 </div>
               </motion.div>
-            ))}
-            <div style={{ display: 'flex', gap: '1rem' }}>
-              <button onClick={submit} disabled={Object.keys(answers).length < questions.length} style={{ flex: 1, background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white', border: 'none', padding: '1rem', borderRadius: '12px', fontWeight: 800, fontSize: '1rem', cursor: 'pointer', opacity: Object.keys(answers).length < questions.length ? 0.5 : 1 }}>
-                ✅ Submit Answers
-              </button>
-              <button onClick={() => { setQuestions([]); setAnswers({}); }} style={{ padding: '1rem 2rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '12px', color: 'var(--text-muted)', cursor: 'pointer' }}>
-                <RefreshCw size={18}/>
-              </button>
-            </div>
-          </div>
-        </AnimatePresence>
-      )}
 
-      {/* Results */}
-      {submitted && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <div style={{ background: pct >= 70 ? 'rgba(16,185,129,0.1)' : pct >= 50 ? 'rgba(251,191,36,0.1)' : 'rgba(239,68,68,0.1)', border: `2px solid ${pct >= 70 ? '#10b981' : pct >= 50 ? '#fbbf24' : '#ef4444'}`, borderRadius: '16px', padding: '2rem', textAlign: 'center', marginBottom: '1.5rem' }}>
-            <div style={{ fontSize: '4rem', fontWeight: 900, fontFamily: 'Outfit, sans-serif', color: pct >= 70 ? '#10b981' : pct >= 50 ? '#fbbf24' : '#ef4444' }}>{score}/{questions.length}</div>
-            <p style={{ color: 'rgba(255,255,255,0.6)', margin: '0.5rem 0 0' }}>
-              {pct >= 80 ? '🌟 Excellent! You mastered these concepts!' : pct >= 50 ? '💪 Good effort! Keep practicing.' : '📚 Keep learning — every session counts!'}
-            </p>
-            <div style={{ marginTop: '0.5rem', color: '#fbbf24', fontWeight: 700 }}>+{15 + score * 5} XP Earned!</div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
-            {questions.map((q, i) => {
-              const isCorrect = (answers[i] || '')[0] === q.answer;
-              return (
-                <div key={i} style={{ background: 'var(--panel-bg)', border: `1px solid ${isCorrect ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`, borderRadius: '12px', padding: '1rem 1.25rem' }}>
-                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    {isCorrect ? <CheckCircle size={18} color="#10b981"/> : <XCircle size={18} color="#ef4444"/>}
-                    <span style={{ fontWeight: 700 }}>Q{i + 1}. {q.question}</span>
-                  </div>
-                  <div style={{ fontSize: '0.85rem', color: '#10b981' }}>✓ Correct: {q.answer})</div>
-                  <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>💡 {q.explanation}</div>
-                </div>
-              );
-            })}
-          </div>
-          <button onClick={() => { setQuestions([]); setAnswers({}); setSubmitted(false); }} style={{ background: 'linear-gradient(135deg, #fbbf24, #d97706)', color: 'black', border: 'none', padding: '1rem 2.5rem', borderRadius: '12px', fontWeight: 800, cursor: 'pointer' }}>
-            🔄 New Quiz
-          </button>
-        </motion.div>
-      )}
-    </motion.div>
+              {/* Per-question review */}
+              <h3 style={{ color: '#fff', margin: 0 }}>Question Review</h3>
+              <div className="quiz-review-list">
+                {questions.map((q, i) => {
+                  const isCorrect = (answers[i] || '')[0] === q.answer;
+                  return (
+                    <motion.div
+                      key={i}
+                      className={`quiz-review-item ${isCorrect ? 'correct' : 'wrong'}`}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.1 }}
+                    >
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 8 }}>
+                        {isCorrect ? <CheckCircle size={18} color="#10b981" style={{ flexShrink: 0, marginTop: 2 }} /> : <XCircle size={18} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />}
+                        <span style={{ color: '#fff', fontWeight: 700 }}>Q{i + 1}. {q.question}</span>
+                      </div>
+                      <div style={{ paddingLeft: 28 }}>
+                        <div style={{ color: '#10b981', fontSize: '0.9rem', marginBottom: 4 }}>✓ Correct: {q.answer}</div>
+                        <div style={{ color: '#88a0b0', fontSize: '0.85rem', lineHeight: 1.5 }}>💡 {q.explanation}</div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+
+              {/* Retry button */}
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', paddingBottom: '3rem' }}>
+                <button className="btn-wizard btn-secondary" onClick={reset} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <RefreshCw size={18} /> New Quiz
+                </button>
+                <button className="quiz-start-btn" onClick={generateQuiz} style={{ fontSize: '1rem', padding: '0.9rem 2.5rem' }}>
+                  ⚡ Retry Same Topic
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+        </AnimatePresence>
+      </div>
+    </div>
   );
 };
 
