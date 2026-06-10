@@ -119,7 +119,7 @@ export const Planner: React.FC = () => {
       return [{ title: 'Overview', content: rawPlan }];
     }
 
-    let intro = splits[0].trim();
+    const intro = splits[0].trim();
     if (intro) days.push({ title: 'Introduction', content: intro });
 
     for (let i = 1; i < splits.length; i += 2) {

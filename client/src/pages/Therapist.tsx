@@ -293,92 +293,73 @@ const Therapist: React.FC = () => {
     const imageData = captureFrame();
 
     try {
-      // MOCK PIPELINE SIMULATION FOR HACKATHON DEMO (Replacing localhost fetch)
-      const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-      
-      const processStep = (data: any) => {
-        if (data.step === 'vision') {
-          setActiveAgents(p => [...new Set([...p, 'vision'])]);
-          if (data.status === 'analyzing') setPipelineStatus('👁️ Agent 5: Biometric Vision analyzing your expression...');
-          if (data.status === 'done' && data.detected) {
-            setPipelineStatus(`👁️ Agent 5: Expression detected — "${data.detected}"`);
-            setBiometricLabel(data.detected);
-          }
-        }
-        else if (data.step === 'memory') {
-          setActiveAgents(p => [...new Set([...p, 'memory'])]);
-          if (data.status === 'retrieving') setPipelineStatus('🗂️ Agent 6: Searching long-term memory vault...');
-          if (data.status === 'done') setPipelineStatus(data.has_memory ? '🗂️ Agent 6: Memory context loaded.' : '🗂️ Agent 6: No prior sessions found.');
-        }
-        else if (data.step === 'nimble' && data.status === 'routing') {
-          setActiveAgents(p => [...new Set([...p, 'nimble'])]);
-          setPipelineStatus('🌐 Agent 4: Evaluating need for live web data...');
-        }
-        else if (data.step === 'nimble' && data.status === 'extracting') {
-          setPipelineStatus('🌐 Agent 4: Scraping & extracting clinical context...');
-        }
-        else if (data.step === 'therapist') {
-          setActiveAgents(p => [...new Set([...p, 'therapist'])]);
-          setPipelineStatus('🧠 Agents 1–3: Therapist → Quest Generator → Safety Supervisor...');
-        }
-        else if (data.step === 'complete') {
-          setPipelineStatus('');
-          playSound('notification');
-          setChatLog(prev => [...prev, {
-            user: msg,
-            therapist: data.result.therapist_reply,
-            quest: data.result.quest,
-            metrics: data.result.vector_metrics,
-            nimble_sources: data.result.nimble_sources
-          }]);
-          speak(data.result.therapist_reply);
-          confetti({ particleCount: 60, spread: 50, origin: { y: 0.3 }, colors: ['#8b5cf6', '#10b981'] });
-        }
-      };
-
-      // Simulate Vision
-      processStep({ step: 'vision', status: 'analyzing' });
-      await wait(1500);
-      processStep({ step: 'vision', status: 'done', detected: imageData ? 'Slightly anxious but engaged' : 'Neutral (Camera off)' });
-      await wait(800);
-      
-      // Simulate Memory
-      processStep({ step: 'memory', status: 'retrieving' });
-      await wait(1200);
-      processStep({ step: 'memory', status: 'done', has_memory: true });
-      await wait(800);
-
-      // Simulate Nimble Web
-      processStep({ step: 'nimble', status: 'routing' });
-      await wait(1000);
-      processStep({ step: 'nimble', status: 'extracting' });
-      await wait(1500);
-
-      // Simulate Core MAS
-      processStep({ step: 'therapist' });
-      await wait(2500);
-
-      // Complete
-      processStep({
-        step: 'complete',
-        result: {
-          therapist_reply: "I hear you. It sounds like you're carrying a lot of weight right now. Let's break this down into smaller, manageable steps. I've created a personalized quest to help you regain your center.",
-          quest: {
-            quest_title: "The Grounding Anchor",
-            quest_lore: "When the mind races, the body must become the anchor. This quest will guide you back to the present moment.",
-            total_xp: 150,
-            steps: [
-              { description: "Take 3 deep, mindful breaths using the 4-7-8 technique.", xp_reward: 50 },
-              { description: "Identify 3 things you can see and name them out loud.", xp_reward: 50 },
-              { description: "Drink a full glass of water mindfully.", xp_reward: 50 }
-            ]
-          },
-          vector_metrics: { anxiety: 0.65, engagement: 0.88 },
-          nimble_sources: [
-            { title: "Managing Acute Stress", url: "https://www.apa.org/topics/stress", snippet: "Grounding techniques are clinically proven to interrupt the anxiety cycle." }
-          ]
-        }
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${baseUrl}/api/interact/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: 'user-demo', message: msg, image_data: imageData })
       });
+
+      if (!response.body) throw new Error('Streams not supported.');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const lines = decoder.decode(value, { stream: true }).split('\n');
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const dataStr = line.slice(6).trim();
+          if (dataStr === '[DONE]') break;
+          try {
+            const data = JSON.parse(dataStr);
+
+            if (data.step === 'vision') {
+              setActiveAgents(p => [...new Set([...p, 'vision'])]);
+              if (data.status === 'analyzing') setPipelineStatus('👁️ Agent 5: Biometric Vision analyzing your expression...');
+              if (data.status === 'done' && data.detected) {
+                setPipelineStatus(`👁️ Agent 5: Expression detected — "${data.detected}"`);
+                setBiometricLabel(data.detected);
+              }
+            }
+            else if (data.step === 'memory') {
+              setActiveAgents(p => [...new Set([...p, 'memory'])]);
+              if (data.status === 'retrieving') setPipelineStatus('🗂️ Agent 6: Searching long-term memory vault...');
+              if (data.status === 'done') setPipelineStatus(data.has_memory ? '🗂️ Agent 6: Memory context loaded.' : '🗂️ Agent 6: No prior sessions found.');
+            }
+            else if (data.step === 'nimble' && data.status === 'routing') {
+              setActiveAgents(p => [...new Set([...p, 'nimble'])]);
+              setPipelineStatus('🌐 Agent 4: Evaluating need for live web data...');
+            }
+            else if (data.step === 'nimble' && data.status === 'extracting') {
+              setPipelineStatus('🌐 Agent 4: Scraping & extracting clinical context...');
+            }
+            else if (data.step === 'therapist') {
+              setActiveAgents(p => [...new Set([...p, 'therapist'])]);
+              setPipelineStatus('🧠 Agents 1–3: Therapist → Quest Generator → Safety Supervisor...');
+            }
+            else if (data.step === 'error') {
+              setPipelineStatus('');
+              alert('Pipeline Error: ' + data.detail);
+            }
+            else if (data.step === 'complete') {
+              setPipelineStatus('');
+              playSound('notification');
+              setChatLog(prev => [...prev, {
+                user: msg,
+                therapist: data.result.therapist_reply,
+                quest: data.result.quest,
+                metrics: data.result.vector_metrics,
+                nimble_sources: data.result.nimble_sources
+              }]);
+              speak(data.result.therapist_reply);
+              confetti({ particleCount: 60, spread: 50, origin: { y: 0.3 }, colors: ['#8b5cf6', '#10b981'] });
+            }
+          } catch (e) { console.error(e); }
+        }
+      }
     } catch (err: any) {
       alert('Pipeline Error: ' + err.message);
       setPipelineStatus('');
