@@ -1,7 +1,0 @@
-backend/
-requirements.txt
-run.py
-test_*.py
-supabase_schema.sql
-.env*
-*.py
